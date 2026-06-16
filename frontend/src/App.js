@@ -18,7 +18,7 @@ export default function App() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res  = await fetch(`https://filecompressionapp-production.up.railway.app/${mode}`, { method: "POST", body: formData });
+      const res  = await fetch(`https://filecompressionapp.onrender.com/${mode}`, { method: "POST", body: formData });
       const data = await res.json();
       if (data.success) setResult(data);
       else setError(data.error);
@@ -184,7 +184,7 @@ export default function App() {
                 <div style={{ ...s.progressFill, width: `${result.saved}%` }} />
               </div>
             </div>
-            <a href={`https://filecompressionapp-production.up.railway.app/download/${result.outputFile}`}
+            <a href={`https://filecompressionapp.onrender.com/download/${result.outputFile}`}
               onMouseEnter={() => setHoverDl(true)}
               onMouseLeave={() => setHoverDl(false)}
               style={{ ...s.downloadBtn, ...(hoverDl ? s.downloadBtnHover : {}) }}>
@@ -203,7 +203,7 @@ export default function App() {
                 <p style={s.resultSubtitle}>Original file has been restored</p>
               </div>
             </div>
-            <a href={`https://filecompressionapp-production.up.railway.app/download/${result.outputFile}`}
+            <a href={`https://filecompressionapp.onrender.com/download/${result.outputFile}`}
               onMouseEnter={() => setHoverDl(true)}
               onMouseLeave={() => setHoverDl(false)}
               style={{ ...s.downloadBtn, ...(hoverDl ? s.downloadBtnHover : {}) }}>
