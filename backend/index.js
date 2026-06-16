@@ -196,6 +196,6 @@ app.get('/download/*filepath', (req, res) => {
   });
 
 });
-  app.listen(5001, () => {
-  console.log('✅ Backend running on http://localhost:5001');
+app.listen(process.env.PORT || 5001, () => {
+  console.log('✅ Backend running');
 });
