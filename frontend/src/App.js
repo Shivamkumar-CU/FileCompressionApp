@@ -23,7 +23,7 @@ export default function App() {
       if (data.success) setResult(data);
       else setError(data.error);
     } catch {
-      setError("Backend connect nahi ho paya.");
+      setError("Could not connect to backend. Please try again.");
     }
     setLoading(false);
   };
