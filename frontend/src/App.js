@@ -4,14 +4,14 @@ const BACKEND = "https://filecompressionapp.onrender.com";
 
 // File type config
 const FILE_TYPES = {
-  ".txt":  { icon: "📄", label: "Text File",   method: "Huffman Encoding", hasQuality: false },
-  ".jpg":  { icon: "🖼️", label: "JPEG Image",  method: "JPEG Optimization", hasQuality: true },
-  ".jpeg": { icon: "🖼️", label: "JPEG Image",  method: "JPEG Optimization", hasQuality: true },
-  ".png":  { icon: "🖼️", label: "PNG Image",   method: "PNG Optimization",  hasQuality: true },
-  ".webp": { icon: "🖼️", label: "WebP Image",  method: "WebP Optimization", hasQuality: true },
-  ".pdf":  { icon: "📕", label: "PDF File",    method: "ZIP Compression",   hasQuality: false },
-  ".docx": { icon: "📘", label: "Word Doc",    method: "ZIP Compression",   hasQuality: false },
-  ".doc":  { icon: "📘", label: "Word Doc",    method: "ZIP Compression",   hasQuality: false },
+  ".txt":  { icon: "📄", label: "Text File",   method: "Huffman Encoding", hasQuality: false, hasResize: false },
+  ".jpg":  { icon: "🖼️", label: "JPEG Image",  method: "JPEG Optimization", hasQuality: true, hasResize: true },
+  ".jpeg": { icon: "🖼️", label: "JPEG Image",  method: "JPEG Optimization", hasQuality: true, hasResize: true },
+  ".png":  { icon: "🖼️", label: "PNG Image",   method: "PNG Optimization",  hasQuality: true, hasResize: true },
+  ".webp": { icon: "🖼️", label: "WebP Image",  method: "WebP Optimization", hasQuality: true, hasResize: true },
+  ".pdf":  { icon: "📕", label: "PDF File",    method: "Ghostscript PDF Compression", hasQuality: true, hasResize: false },
+  ".docx": { icon: "📘", label: "Word Doc",    method: "ZIP Compression",   hasQuality: false, hasResize: false },
+  ".doc":  { icon: "📘", label: "Word Doc",    method: "ZIP Compression",   hasQuality: false, hasResize: false },
 };
 
 // Quality presets
@@ -19,6 +19,14 @@ const PRESETS = [
   { label: "Maximum", sublabel: "Best quality", quality: 90, color: "#38ef7d" },
   { label: "Balanced", sublabel: "Recommended", quality: 70, color: "#667eea" },
   { label: "Aggressive", sublabel: "Smallest size", quality: 40, color: "#f093fb" },
+];
+
+// Resize presets (max dimension in px)
+const RESIZE_PRESETS = [
+  { label: "Original", value: null },
+  { label: "1920px", value: 1920 },
+  { label: "1280px", value: 1280 },
+  { label: "800px", value: 800 },
 ];
 
 export default function App() {
@@ -30,6 +38,7 @@ export default function App() {
   const [error, setError]         = useState(null);
   const [drag, setDrag]           = useState(false);
   const [quality, setQuality]     = useState(70);
+  const [maxDimension, setMaxDimension] = useState(null);
   const [hoverBtn, setHoverBtn]   = useState(false);
   const [hoverDl, setHoverDl]     = useState(false);
   const [hoverMode, setHoverMode] = useState(null);
@@ -55,6 +64,7 @@ export default function App() {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("quality", quality);
+    if (maxDimension) formData.append("maxDimension", maxDimension);
     try {
       const res  = await fetch(`${BACKEND}/${mode}`, { method: "POST", body: formData });
       const data = await res.json();
@@ -75,11 +85,13 @@ export default function App() {
 
   const fileInfo = fileExt ? FILE_TYPES[fileExt] : null;
   const showQuality = fileInfo?.hasQuality && mode === "compress";
+  const showResize = fileInfo?.hasResize && mode === "compress";
 
-  // Min size estimate for images
+  // Min size estimate
   const minSizeNote = () => {
     if (!file || !fileInfo?.hasQuality) return null;
-    const minKB = Math.round((file.size / 1024) * 0.15);
+    if (fileExt === '.pdf') return `Compression depends on images/fonts inside the PDF`;
+    const minKB = Math.round((file.size / 1024) * 0.1);
     return `Minimum possible: ~${minKB} KB`;
   };
 
@@ -158,7 +170,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Quality Slider — only for images */}
+        {/* Quality Slider — images + PDF */}
         {showQuality && (
           <div style={s.sliderWrap}>
             <div style={s.sliderHeader}>
@@ -186,18 +198,41 @@ export default function App() {
               onChange={(e) => setQuality(Number(e.target.value))}
               style={s.slider} />
 
-            {/* Scale labels */}
             <div style={s.sliderScale}>
               <span>Smaller File</span>
               <span>Higher Quality</span>
             </div>
 
-            {/* Min size note */}
             {minSizeNote() && (
               <div style={s.minSizeNote}>
-                ℹ️ {minSizeNote()} · Images below ~10% quality lose visible detail
+                ℹ️ {minSizeNote()} {fileExt !== '.pdf' && '· Images below ~10% quality lose visible detail'}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Resize Options — images only */}
+        {showResize && (
+          <div style={s.sliderWrap}>
+            <div style={s.sliderHeader}>
+              <span style={s.sliderLabel}>Resize Dimensions</span>
+              <span style={s.sliderValue}>{maxDimension ? maxDimension + "px" : "Original"}</span>
+            </div>
+            <div style={s.presetRow}>
+              {RESIZE_PRESETS.map((p) => (
+                <button key={p.label}
+                  onClick={() => setMaxDimension(p.value)}
+                  style={{
+                    ...s.presetBtn,
+                    ...(maxDimension === p.value ? { ...s.presetActive, borderColor: "#667eea", color: "#667eea" } : {}),
+                  }}>
+                  <span style={{ fontSize: 11, fontWeight: 700 }}>{p.label}</span>
+                </button>
+              ))}
+            </div>
+            <div style={s.minSizeNote}>
+              ℹ️ Smaller dimensions reduce file size further, especially for large photos
+            </div>
           </div>
         )}
 

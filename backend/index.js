@@ -31,6 +31,26 @@ function zipFile(inputPath, outputPath) {
   });
 }
 
+// Ghostscript PDF compression
+// quality 1-100 maps to Ghostscript presets
+function compressPDF(inputPath, outputPath, quality) {
+  return new Promise((resolve, reject) => {
+    let setting = '/ebook'; // balanced default
+    if (quality >= 80) setting = '/printer';      // high quality, larger
+    else if (quality >= 50) setting = '/ebook';    // balanced
+    else setting = '/screen';                      // smallest, lower quality
+
+    const cmd = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=${setting} -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${outputPath}" "${inputPath}"`;
+
+    try {
+      execSync(cmd);
+      resolve();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 // ==================== COMPRESS ====================
 app.post('/compress', upload.single('file'), async (req, res) => {
   try {
@@ -40,6 +60,8 @@ app.post('/compress', upload.single('file'), async (req, res) => {
 
     // Quality slider from frontend (1-100), default 70
     const quality = parseInt(req.body.quality) || 70;
+    // Max dimension from frontend (optional), e.g. 1920
+    const maxDimension = req.body.maxDimension ? parseInt(req.body.maxDimension) : null;
 
     // ── TXT → Huffman ──
     if (ext === '.txt') {
@@ -51,39 +73,68 @@ app.post('/compress', upload.single('file'), async (req, res) => {
       return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'Huffman Encoding' });
     }
 
-    // ── JPG / JPEG → Sharp ──
+    // ── JPG / JPEG → Sharp (quality + resize) ──
     if (ext === '.jpg' || ext === '.jpeg') {
       const outputName = 'compressed_' + req.file.originalname;
       const outputPath = path.join(__dirname, 'outputs', outputName);
-      await sharp(inputPath).jpeg({ quality }).toFile(outputPath);
+
+      let pipeline = sharp(inputPath);
+      if (maxDimension) {
+        pipeline = pipeline.resize(maxDimension, maxDimension, { fit: 'inside', withoutEnlargement: true });
+      }
+      await pipeline.jpeg({ quality, mozjpeg: true }).toFile(outputPath);
+
       const compressedSize = fs.statSync(outputPath).size;
       const saved = Math.max(0, Math.round((1 - compressedSize / originalSize) * 100));
       return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'JPEG Optimization' });
     }
 
-    // ── PNG → Sharp ──
+    // ── PNG → Sharp (quality + resize) ──
     if (ext === '.png') {
       const outputName = 'compressed_' + req.file.originalname;
       const outputPath = path.join(__dirname, 'outputs', outputName);
-      // compressionLevel 0-9 (inverse of quality)
+
+      let pipeline = sharp(inputPath);
+      if (maxDimension) {
+        pipeline = pipeline.resize(maxDimension, maxDimension, { fit: 'inside', withoutEnlargement: true });
+      }
       const compressionLevel = Math.round((100 - quality) / 11);
-      await sharp(inputPath).png({ compressionLevel, quality }).toFile(outputPath);
+      await pipeline.png({ compressionLevel, quality, palette: quality < 70 }).toFile(outputPath);
+
       const compressedSize = fs.statSync(outputPath).size;
       const saved = Math.max(0, Math.round((1 - compressedSize / originalSize) * 100));
       return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'PNG Optimization' });
     }
 
-    // ── WEBP → Sharp ──
+    // ── WEBP → Sharp (quality + resize) ──
     if (ext === '.webp') {
       const outputName = 'compressed_' + req.file.originalname;
       const outputPath = path.join(__dirname, 'outputs', outputName);
-      await sharp(inputPath).webp({ quality }).toFile(outputPath);
+
+      let pipeline = sharp(inputPath);
+      if (maxDimension) {
+        pipeline = pipeline.resize(maxDimension, maxDimension, { fit: 'inside', withoutEnlargement: true });
+      }
+      await pipeline.webp({ quality }).toFile(outputPath);
+
       const compressedSize = fs.statSync(outputPath).size;
       const saved = Math.max(0, Math.round((1 - compressedSize / originalSize) * 100));
       return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'WebP Optimization' });
     }
 
-    // ── PDF / DOCX / DOC → ZIP ──
+    // ── PDF → Ghostscript ──
+    if (ext === '.pdf') {
+      const outputName = 'compressed_' + req.file.originalname;
+      const outputPath = path.join(__dirname, 'outputs', outputName);
+
+      await compressPDF(inputPath, outputPath, quality);
+
+      const compressedSize = fs.statSync(outputPath).size;
+      const saved = Math.max(0, Math.round((1 - compressedSize / originalSize) * 100));
+      return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'Ghostscript PDF Compression' });
+    }
+
+    // ── DOCX / DOC → ZIP (fallback, no good native compressor) ──
     const outputName = req.file.originalname + '.zip';
     const outputPath = path.join(__dirname, 'outputs', outputName);
     await zipFile(inputPath, outputPath);
