@@ -9,7 +9,7 @@ const FILE_TYPES = {
   ".jpeg": { icon: "🖼️", label: "JPEG Image",  method: "JPEG Optimization", hasQuality: true, hasResize: true },
   ".png":  { icon: "🖼️", label: "PNG Image",   method: "PNG Optimization",  hasQuality: true, hasResize: true },
   ".webp": { icon: "🖼️", label: "WebP Image",  method: "WebP Optimization", hasQuality: true, hasResize: true },
-  ".pdf":  { icon: "📕", label: "PDF File",    method: "Ghostscript PDF Compression", hasQuality: true, hasResize: false },
+  ".pdf":  { icon: "📕", label: "PDF File",    method: "PDF Stream Compression", hasQuality: true, hasResize: false },
   ".docx": { icon: "📘", label: "Word Doc",    method: "ZIP Compression",   hasQuality: false, hasResize: false },
   ".doc":  { icon: "📘", label: "Word Doc",    method: "ZIP Compression",   hasQuality: false, hasResize: false },
 };

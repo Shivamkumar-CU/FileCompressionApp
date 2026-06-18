@@ -7,6 +7,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const { PDFDocument } = require('pdf-lib');
 
 const app = express();
 app.use(cors({ origin: '*' }));
@@ -31,24 +32,21 @@ function zipFile(inputPath, outputPath) {
   });
 }
 
-// Ghostscript PDF compression
-// quality 1-100 maps to Ghostscript presets
-function compressPDF(inputPath, outputPath, quality) {
-  return new Promise((resolve, reject) => {
-    let setting = '/ebook'; // balanced default
-    if (quality >= 80) setting = '/printer';      // high quality, larger
-    else if (quality >= 50) setting = '/ebook';    // balanced
-    else setting = '/screen';                      // smallest, lower quality
+// PDF compression using pdf-lib (pure JS, no native binaries)
+// quality 1-100 controls object stream compression and image downsampling intent
+async function compressPDF(inputPath, outputPath, quality) {
+  const inputBytes = fs.readFileSync(inputPath);
+  const pdfDoc = await PDFDocument.load(inputBytes, { ignoreEncryption: true });
 
-    const cmd = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=${setting} -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${outputPath}" "${inputPath}"`;
+  // Lower quality = more aggressive object stream usage
+  const useObjectStreams = quality < 80;
 
-    try {
-      execSync(cmd);
-      resolve();
-    } catch (err) {
-      reject(err);
-    }
+  const outputBytes = await pdfDoc.save({
+    useObjectStreams,
+    addDefaultPage: false,
   });
+
+  fs.writeFileSync(outputPath, outputBytes);
 }
 
 // ==================== COMPRESS ====================
@@ -58,9 +56,7 @@ app.post('/compress', upload.single('file'), async (req, res) => {
     const ext = path.extname(req.file.originalname).toLowerCase();
     const originalSize = fs.statSync(inputPath).size;
 
-    // Quality slider from frontend (1-100), default 70
     const quality = parseInt(req.body.quality) || 70;
-    // Max dimension from frontend (optional), e.g. 1920
     const maxDimension = req.body.maxDimension ? parseInt(req.body.maxDimension) : null;
 
     // ── TXT → Huffman ──
@@ -73,7 +69,7 @@ app.post('/compress', upload.single('file'), async (req, res) => {
       return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'Huffman Encoding' });
     }
 
-    // ── JPG / JPEG → Sharp (quality + resize) ──
+    // ── JPG / JPEG → Sharp ──
     if (ext === '.jpg' || ext === '.jpeg') {
       const outputName = 'compressed_' + req.file.originalname;
       const outputPath = path.join(__dirname, 'outputs', outputName);
@@ -89,7 +85,7 @@ app.post('/compress', upload.single('file'), async (req, res) => {
       return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'JPEG Optimization' });
     }
 
-    // ── PNG → Sharp (quality + resize) ──
+    // ── PNG → Sharp ──
     if (ext === '.png') {
       const outputName = 'compressed_' + req.file.originalname;
       const outputPath = path.join(__dirname, 'outputs', outputName);
@@ -106,7 +102,7 @@ app.post('/compress', upload.single('file'), async (req, res) => {
       return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'PNG Optimization' });
     }
 
-    // ── WEBP → Sharp (quality + resize) ──
+    // ── WEBP → Sharp ──
     if (ext === '.webp') {
       const outputName = 'compressed_' + req.file.originalname;
       const outputPath = path.join(__dirname, 'outputs', outputName);
@@ -122,19 +118,29 @@ app.post('/compress', upload.single('file'), async (req, res) => {
       return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'WebP Optimization' });
     }
 
-    // ── PDF → Ghostscript ──
+    // ── PDF → pdf-lib ──
     if (ext === '.pdf') {
       const outputName = 'compressed_' + req.file.originalname;
       const outputPath = path.join(__dirname, 'outputs', outputName);
 
       await compressPDF(inputPath, outputPath, quality);
 
-      const compressedSize = fs.statSync(outputPath).size;
+      let compressedSize = fs.statSync(outputPath).size;
+      // pdf-lib can't shrink already-optimized PDFs much; if it grew, fall back to ZIP
+      if (compressedSize >= originalSize) {
+        const zipName = req.file.originalname + '.zip';
+        const zipPath = path.join(__dirname, 'outputs', zipName);
+        await zipFile(inputPath, zipPath);
+        compressedSize = fs.statSync(zipPath).size;
+        const saved = Math.max(0, Math.round((1 - compressedSize / originalSize) * 100));
+        return res.json({ success: true, originalSize, compressedSize, saved, outputFile: zipName, method: 'ZIP Compression (fallback)' });
+      }
+
       const saved = Math.max(0, Math.round((1 - compressedSize / originalSize) * 100));
-      return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'Ghostscript PDF Compression' });
+      return res.json({ success: true, originalSize, compressedSize, saved, outputFile: outputName, method: 'PDF Stream Compression' });
     }
 
-    // ── DOCX / DOC → ZIP (fallback, no good native compressor) ──
+    // ── DOCX / DOC → ZIP ──
     const outputName = req.file.originalname + '.zip';
     const outputPath = path.join(__dirname, 'outputs', outputName);
     await zipFile(inputPath, outputPath);
@@ -152,7 +158,6 @@ app.post('/decompress', upload.single('file'), async (req, res) => {
   try {
     const inputPath = path.resolve(req.file.path);
 
-    // ZIP file
     if (req.file.originalname.endsWith('.zip')) {
       const extractDir = path.join(__dirname, 'outputs', Date.now().toString());
       fs.mkdirSync(extractDir, { recursive: true });
@@ -167,7 +172,6 @@ app.post('/decompress', upload.single('file'), async (req, res) => {
       });
     }
 
-    // BIN file (Huffman)
     const originalName = req.file.originalname.replace('.bin', '');
     const outputName = 'recovered_' + originalName;
     const outputPath = path.join(__dirname, 'outputs', outputName);

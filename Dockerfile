@@ -1,6 +1,6 @@
 FROM node:18
 
-RUN apt-get update && apt-get install -y g++ ghostscript
+RUN apt-get update && apt-get install -y g++
 
 WORKDIR /app
 
