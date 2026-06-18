@@ -8,7 +8,8 @@ COPY cpp/main.cpp ./main.cpp
 RUN g++ -o compressor main.cpp
 
 COPY backend/package*.json ./
-RUN npm install
+RUN npm install --omit=dev
+RUN npm rebuild sharp --platform=linux --arch=x64
 
 COPY backend/ ./
 
